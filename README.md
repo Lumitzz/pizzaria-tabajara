@@ -35,4 +35,23 @@ Este projeto simula um sistema de delivery de pizzaria, feito com foco em aprend
 
 ---
 
+## 📋 Descrição do projeto
 
+O sistema permite que clientes façam pedidos de pizza, que são registrados em um banco de dados e podem ser acompanhados até a entrega.  
+A proposta é simular o funcionamento de uma pizzaria, com foco no desenvolvimento de habilidades em programação web, banco de dados e versionamento de código.
+
+---
+
+## ▶️ Instruções de execução
+
+### 1. Pré-requisitos
+
+- PHP instalado (ou usar o XAMPP)
+- MySQL
+- Navegador web
+- Git (para clonar o projeto)
+
+### 2. Clonar o repositório
+
+```bash
+git clone https://github.com/SEU_USUARIO/pizzaria-tabajara.git
