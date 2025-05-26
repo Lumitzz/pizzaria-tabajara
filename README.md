@@ -54,4 +54,4 @@ A proposta é simular o funcionamento de uma pizzaria, com foco no desenvolvimen
 ### 2. Clonar o repositório
 
 ```bash
-git clone https://github.com/SEU_USUARIO/pizzaria-tabajara.git
+git clone https://github.com/Lumitzz/pizzaria-tabajara.git
