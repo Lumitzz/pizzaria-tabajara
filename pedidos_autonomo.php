@@ -1,9 +1,7 @@
 <?php
-session_start(); // Inicia a sessão
-
+session_start();
 
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
-    
     header("Location: login.html?erro=acesso_negado");
     exit(); 
 }
@@ -15,44 +13,99 @@ include 'conexao.php';
 if ($conexao->connect_error) {
     die("<h1 style='color:red;'>Erro de conexão com o banco de dados: " . $conexao->connect_error . "</h1>");
 }
-$sql = "SELECT 
-          ped.id as pedido_id,
-          c.nome as cliente, 
-          p.nome as pizza, 
-          ped.pagamento, 
-          ped.observacoes,
-          ped.data_cadastro
-        FROM pedidos ped
-        JOIN clientes c ON ped.cliente_id = c.id
-        JOIN pizzas p ON ped.pizza_id = p.id
-        ORDER BY ped.id DESC";
-$result = $conexao->query($sql);
-$lista_pedidos_html = "";
-if ($result && $result->num_rows > 0) {
-    while($row = $result->fetch_assoc()) {
-        $lista_pedidos_html .= "<li>";
-        $lista_pedidos_html .= "<div style='margin-bottom: 5px;'><strong style='color:#F96D00;'>Pedido #" . htmlspecialchars($row['pedido_id']) . "</strong></div>";
-        $lista_pedidos_html .= "<div><b>Cliente:</b> " . htmlspecialchars($row['cliente']) . "</div>";
-        $lista_pedidos_html .= "<div><b>Pizza:</b> " . htmlspecialchars($row['pizza']) . "</div>";
-        $lista_pedidos_html .= "<div><b>Pagamento:</b> " . htmlspecialchars($row['pagamento']) . "</div>";
-        $lista_pedidos_html .= "<div><b>Observações:</b> " . (!empty($row['observacoes']) ? htmlspecialchars($row['observacoes']) : 'Nenhuma') . "</div>";
-        $lista_pedidos_html .= "<div style='margin-top: 5px; font-size: 0.8em; color: #666;'>";
-        $lista_pedidos_html .= "Data: " . date('d/m/Y H:i', strtotime($row['data_cadastro']));
-        $lista_pedidos_html .= "</div>";
-        $lista_pedidos_html .= "</li>";
-    }
-} else {
-    $lista_pedidos_html = "<li class='no-pedidos'>Nenhum pedido encontrado no banco de dados.</li>";
-    if (!$result) {
-        $lista_pedidos_html .= "<li class='no-pedidos'>Erro na consulta SQL: " . $conexao->error . "</li>";
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['action'])) {
+        $action = $_POST['action'];
+        
+        if ($action === 'create') {
+            $cliente_id = $_POST['cliente_id'];
+            $pizza_id = $_POST['pizza_id'];
+            $pagamento = $_POST['pagamento'];
+            $observacoes = $_POST['observacoes'];
+            
+            $sql = "INSERT INTO pedidos (cliente_id, pizza_id, pagamento, observacoes, data_cadastro) 
+                    VALUES (?, ?, ?, ?, NOW())";
+            $stmt = $conexao->prepare($sql);
+            $stmt->bind_param("iiss", $cliente_id, $pizza_id, $pagamento, $observacoes);
+            $stmt->execute();
+            
+            if ($stmt->affected_rows > 0) {
+                $mensagem = "Pedido criado com sucesso!";
+            } else {
+                $erro = "Erro ao criar pedido: " . $conexao->error;
+            }
+            
+        } elseif ($action === 'update') {
+            $pedido_id = $_POST['pedido_id'];
+            $cliente_id = $_POST['cliente_id'];
+            $pizza_id = $_POST['pizza_id'];
+            $pagamento = $_POST['pagamento'];
+            $observacoes = $_POST['observacoes'];
+            
+            $sql = "UPDATE pedidos SET 
+                    cliente_id = ?, 
+                    pizza_id = ?, 
+                    pagamento = ?, 
+                    observacoes = ? 
+                    WHERE id = ?";
+            $stmt = $conexao->prepare($sql);
+            $stmt->bind_param("iissi", $cliente_id, $pizza_id, $pagamento, $observacoes, $pedido_id);
+            $stmt->execute();
+            
+            if ($stmt->affected_rows > 0) {
+                $mensagem = "Pedido atualizado com sucesso!";
+            } else {
+                $erro = "Erro ao atualizar pedido: " . $conexao->error;
+            }
+            
+        } elseif ($action === 'delete') {
+            $pedido_id = $_POST['pedido_id'];
+            
+            $sql = "DELETE FROM pedidos WHERE id = ?";
+            $stmt = $conexao->prepare($sql);
+            $stmt->bind_param("i", $pedido_id);
+            $stmt->execute();
+            
+            if ($stmt->affected_rows > 0) {
+                $mensagem = "Pedido excluído com sucesso!";
+            } else {
+                $erro = "Erro ao excluir pedido: " . $conexao->error;
+            }
+        }
     }
 }
-$conexao->close();
+
+$sql_pedidos = "SELECT 
+                  ped.id as pedido_id,
+                  c.nome as cliente, 
+                  p.nome as pizza, 
+                  ped.pagamento, 
+                  ped.observacoes,
+                  ped.data_cadastro
+                FROM pedidos ped
+                JOIN clientes c ON ped.cliente_id = c.id
+                JOIN pizzas p ON ped.pizza_id = p.id
+                ORDER BY ped.id DESC";
+$result_pedidos = $conexao->query($sql_pedidos);
+
+$clientes = $conexao->query("SELECT id, nome FROM clientes ORDER BY nome");
+$pizzas = $conexao->query("SELECT id, nome FROM pizzas ORDER BY nome");
+
+$pedido_edicao = null;
+if (isset($_GET['editar']) && is_numeric($_GET['editar'])) {
+    $sql = "SELECT * FROM pedidos WHERE id = ?";
+    $stmt = $conexao->prepare($sql);
+    $stmt->bind_param("i", $_GET['editar']);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $pedido_edicao = $result->fetch_assoc();
+}
 ?>
 
 <!DOCTYPE html>
 <html lang="pt-br">
-  <head>
+<head>
     <title>Pizzaria Tabajara - Pedidos</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -77,15 +130,15 @@ $conexao->close();
 
     <style>
         #adm_pedidos {
-            height: 800px;
+            height: auto;
             display: flex;
             flex-direction: column;
             align-items: center;
             padding: 20px;
             position: relative;
+            min-height: 800px;
         }
         
-    
         #adm_pedidos .one-half.img {
             position: absolute;
             width: 100%;
@@ -95,7 +148,6 @@ $conexao->close();
             object-fit: cover; 
         }
         
-        
         #adm_pedidos h1 {
             margin: 30px 0;
             color: #333;
@@ -103,32 +155,36 @@ $conexao->close();
             font-size: 2.5rem; 
         }
         
-        /* Estilos para a lista de pedidos */
-        #lista-pedidos {
-            width: 80%; 
-            max-height: 600px; 
-            overflow-y: auto; 
-            background-color: rgba(255, 255, 255, 0.95); 
+        .crud-container {
+            width: 80%;
+            margin: 20px auto;
+            background-color: rgba(0, 0, 0, 0.95);
             padding: 20px;
-            border-radius: 10px; 
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2); 
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(255, 253, 253, 0.2);
         }
         
-       
+        #lista-pedidos {
+            width: 80%;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            margin-bottom: 30px;
+        }
+        
         #lista-pedidos li {
             padding: 15px;
-            margin-bottom: 15px; 
-            background: #fff; 
-            border-left: 4px solid #F96D00; 
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
-            transition: transform 0.2s; 
+            margin-bottom: 15px;
+            background: #fff;
+            border-left: 4px solid #F96D00;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
         }
-        
         
         #lista-pedidos li:hover {
-            transform: translateX(5px); 
+            transform: translateX(5px);
         }
-        
         
         .no-pedidos {
             color: #666;
@@ -137,35 +193,211 @@ $conexao->close();
             font-style: italic;
         }
         
-        
         footer {
             background-color: #000;
             height: 50px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-top: auto; 
+            margin-top: auto;
         }
         
         footer p {
             color: rgb(148, 147, 146);
         }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .btn-primary {
+            background-color: #F96D00;
+            color: white;
+        }
+        
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        
+        .alert {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .action-buttons {
+            margin-top: 10px;
+        }
+        
+        .action-buttons a {
+            margin-right: 5px;
+            text-decoration: none;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        
+        .edit-btn {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        
+        .delete-btn {
+            background-color: #dc3545;
+            color: white;
+        }
     </style>
-
-  </head>
-  <body>
-  	<nav class="navbar navbar-expand-lg navbar-dark ftco_navbar bg-dark ftco-navbar-light" id="ftco-navbar">
-	    <div class="container" id="menu_adm">
-		      <a class="navbar-brand" href="index.html"><span class="flaticon-pizza-1 mr-1"></span>Pizzaria<br><small>Tabajara</small></a>
-		</div>
-	</nav>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark ftco_navbar bg-dark ftco-navbar-light" id="ftco-navbar">
+        <div class="container" id="menu_adm">
+            <a class="navbar-brand" href="index.html"><span class="flaticon-pizza-1 mr-1"></span>Pizzaria<br><small>Tabajara</small></a>
+        </div>
+    </nav>
 
     <section id="adm_pedidos">
         <div class="one-half img" style="background-image: url(images/about.jpg);"></div>
-        <h1>Lista de Pedidos</h1>
-        <ul id="lista-pedidos">
-            <?php echo $lista_pedidos_html; ?>
-        </ul>
+        <h1>Gerenciamento de Pedidos</h1>
+        
+        <?php if (isset($mensagem)): ?>
+            <div class="alert alert-success"><?php echo $mensagem; ?></div>
+        <?php endif; ?>
+        
+        <?php if (isset($erro)): ?>
+            <div class="alert alert-danger"><?php echo $erro; ?></div>
+        <?php endif; ?>
+        
+        <div class="crud-container">
+            <h2><?php echo $pedido_edicao ? 'Editar Pedido' : 'Criar Novo Pedido'; ?></h2>
+            <form method="POST" action="">
+                <input type="hidden" name="action" value="<?php echo $pedido_edicao ? 'update' : 'create'; ?>">
+                
+                <?php if ($pedido_edicao): ?>
+                    <input type="hidden" name="pedido_id" value="<?php echo $pedido_edicao['id']; ?>">
+                <?php endif; ?>
+                
+                <div class="form-group">
+                    <label for="cliente_id">Cliente:</label>
+                    <select class="form-control" id="cliente_id" name="cliente_id" required>
+                        <option value="">Selecione um cliente</option>
+                        <?php while ($cliente = $clientes->fetch_assoc()): ?>
+                            <option value="<?php echo $cliente['id']; ?>"
+                                <?php if ($pedido_edicao && $pedido_edicao['cliente_id'] == $cliente['id']) echo 'selected'; ?>>
+                                <?php echo htmlspecialchars($cliente['nome']); ?>
+                            </option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="pizza_id">Pizza:</label>
+                    <select class="form-control" id="pizza_id" name="pizza_id" required>
+                        <option value="">Selecione uma pizza</option>
+                        <?php 
+                        $pizzas->data_seek(0);
+                        while ($pizza = $pizzas->fetch_assoc()): ?>
+                            <option value="<?php echo $pizza['id']; ?>"
+                                <?php if ($pedido_edicao && $pedido_edicao['pizza_id'] == $pizza['id']) echo 'selected'; ?>>
+                                <?php echo htmlspecialchars($pizza['nome']); ?>
+                            </option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="pagamento">Forma de Pagamento:</label>
+                    <select class="form-control" id="pagamento" name="pagamento" required>
+                        <option value="Dinheiro" <?php if ($pedido_edicao && $pedido_edicao['pagamento'] == 'Dinheiro') echo 'selected'; ?>>Dinheiro</option>
+                        <option value="Cartão" <?php if ($pedido_edicao && $pedido_edicao['pagamento'] == 'Cartão') echo 'selected'; ?>>Cartão</option>
+                        <option value="PIX" <?php if ($pedido_edicao && $pedido_edicao['pagamento'] == 'PIX') echo 'selected'; ?>>PIX</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="observacoes">Observações:</label>
+                    <textarea class="form-control" id="observacoes" name="observacoes"><?php echo $pedido_edicao ? htmlspecialchars($pedido_edicao['observacoes']) : ''; ?></textarea>
+                </div>
+                
+                <div class="action-buttons">
+                    <button type="submit" class="btn btn-primary"><?php echo $pedido_edicao ? 'Atualizar' : 'Criar'; ?></button>
+                    <?php if ($pedido_edicao): ?>
+                        <a href="pedidos_autonomo.php" class="btn btn-secondary">Cancelar</a>
+                    <?php endif; ?>
+                </div>
+            </form>
+        </div>
+        
+        <div id="lista-pedidos">
+            <h2>Lista de Pedidos</h2>
+            <?php if ($result_pedidos && $result_pedidos->num_rows > 0): ?>
+                <ul>
+                    <?php while($row = $result_pedidos->fetch_assoc()): ?>
+                        <li>
+                            <div style="margin-bottom: 5px;"><strong style="color:#F96D00;">Pedido #<?php echo htmlspecialchars($row['pedido_id']); ?></strong></div>
+                            <div><b>Cliente:</b> <?php echo htmlspecialchars($row['cliente']); ?></div>
+                            <div><b>Pizza:</b> <?php echo htmlspecialchars($row['pizza']); ?></div>
+                            <div><b>Pagamento:</b> <?php echo htmlspecialchars($row['pagamento']); ?></div>
+                            <div><b>Observações:</b> <?php echo !empty($row['observacoes']) ? htmlspecialchars($row['observacoes']) : 'Nenhuma'; ?></div>
+                            <div style="margin-top: 5px; font-size: 0.8em; color: #666;">
+                                Data: <?php echo date('d/m/Y H:i', strtotime($row['data_cadastro'])); ?>
+                            </div>
+                            <div class="action-buttons" style="margin-top: 10px;">
+                                <a href="pedidos_autonomo.php?editar=<?php echo $row['pedido_id']; ?>" class="edit-btn">Editar</a>
+                                <form method="POST" action="" style="display: inline;">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="pedido_id" value="<?php echo $row['pedido_id']; ?>">
+                                    <button type="submit" class="delete-btn" onclick="return confirm('Tem certeza que deseja excluir este pedido?')">Excluir</button>
+                                </form>
+                            </div>
+                        </li>
+                    <?php endwhile; ?>
+                </ul>
+            <?php else: ?>
+                <p class="no-pedidos">Nenhum pedido encontrado no banco de dados.</p>
+            <?php endif; ?>
+        </div>
     </section>
 
     <footer>
@@ -191,5 +423,5 @@ $conexao->close();
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBVWaKrjvy3MaE7SQ74_uJiULgl1JY0H2s&sensor=false"></script>
     <script src="js/google-map.js"></script>
     <script src="js/main.js"></script>
-    </body>
+</body>
 </html>
